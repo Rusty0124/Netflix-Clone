@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String    @id @default(uuid())
+  supabaseUserId String    @unique
+  email          String    @unique
+  role           String    @default("USER")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  profiles       Profile[]
+}
+
+model Profile {
+  id        String   @id @default(cuid())
+  name      String
+  avatar    String?
+  isKids    Boolean  @default(false)
+  userId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  myList    MyList[]
+}
+
+model Movie {
+  id             String   @id @default(cuid())
+  publicId       String   @unique
+  title          String
+  description    String
+  thumbnailUrl   String?
+  isTrending     Boolean  @default(false)
+  trailerUrl     String?
+  videoUrl       String?
+  cloudinaryId   String?
+  duration       Int?
+  releaseYear    Int?
+  maturityRating String?  @default("NR")
+  isFeatured     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  myList         MyList[]
+}
+
+model MyList {
+  id        String   @id @default(cuid())
+  profileId String
+  movieId   String?
+  addedAt   DateTime @default(now())
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  movie     Movie?   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, movieId])
+}
