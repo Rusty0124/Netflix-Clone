@@ -1,51 +1,108 @@
-import { notFound } from "next/navigation";
-import cloudinary from "@/lib/cloudinary";
-import { prisma } from "@/lib/supabase/prisma";
-import MyPlayer from "@/components/player";
+"use client";
 
-const SIGNED_URL_TTL = 4 * 60 * 60;
-const THUMBNAIL_INTERVAL = 2;
+import { useParams, useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import axios from "axios";
+import type { Movie } from "@/app/generated/prisma/client";
+import { ArrowLeft } from "lucide-react";
 
-export default async function WatchPage({
-  params,
-}: {
-  params: Promise<{ movieId: string }>;
-}) {
-  const { movieId } = await params;
-  const movie = await prisma.movie.findUnique({ where: { id: movieId } });
+function getYouTubeEmbedUrl(trailerUrl: string): string {
+  // Already an embed URL
+  if (trailerUrl.includes("youtube.com/embed/")) {
+    const url = new URL(trailerUrl);
+    url.searchParams.set("autoplay", "1");
+    url.searchParams.set("controls", "1");
+    url.searchParams.delete("mute");
+    url.searchParams.delete("loop");
+    url.searchParams.delete("playlist");
+    return url.toString();
+  }
 
-  if (!movie) notFound();
+  // Regular YouTube URL — extract video ID
+  let videoId = "";
+  try {
+    const url = new URL(trailerUrl);
+    if (url.hostname.includes("youtu.be")) {
+      videoId = url.pathname.slice(1);
+    } else {
+      videoId = url.searchParams.get("v") || "";
+    }
+  } catch {
+    return trailerUrl;
+  }
 
-  const expiresAt = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL;
+  if (videoId) {
+    return `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&rel=0`;
+  }
 
-  const src = movie.cloudinaryId
-    ? cloudinary.url(movie.cloudinaryId, {
-        resource_type: "video",
-        type: "authenticated",
-        sign_url: true,
-        expires_at: expiresAt,
-      })
-    : movie.videoUrl;
+  return trailerUrl;
+}
 
-  const thumbnails = movie.duration
-    ? Array.from(
-        { length: Math.ceil(movie.duration / THUMBNAIL_INTERVAL) },
-        (_, i) => {
-          const t = i * THUMBNAIL_INTERVAL;
-          const url = cloudinary.url(movie.cloudinaryId!, {
-            resource_type: "video",
-            type: "authenticated",
-            sign_url: true,
-            expires_at: expiresAt,
-            raw_transformation: `w_160,h_90,so_${t}`,
-            format: "jpg",
-          });
-          return { url, startTime: t, endTime: t + THUMBNAIL_INTERVAL };
-        },
-      )
-    : [];
+export default function WatchPage() {
+  const { movieId } = useParams<{ movieId: string }>();
+  const router = useRouter();
+
+  const { data: movie, isLoading } = useQuery({
+    queryKey: ["movies", "public", movieId],
+    queryFn: async () =>
+      (await axios.get<Movie>(`/api/movies/public/${movieId}`)).data,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-black text-white">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!movie) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-black text-white">
+        Movie not found.
+      </div>
+    );
+  }
+
+  const embedUrl = movie.trailerUrl
+    ? getYouTubeEmbedUrl(movie.trailerUrl)
+    : null;
 
   return (
-    <MyPlayer src={src ?? ""} title={movie.title} thumbnails={thumbnails} />
+    <div className="relative h-screen w-full bg-black">
+      <button
+        onClick={() => router.back()}
+        className="absolute left-6 top-6 z-20 flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-sm text-white transition hover:bg-black/80"
+      >
+        <ArrowLeft size={18} />
+        Back
+      </button>
+
+      {embedUrl ? (
+        <iframe
+          src={embedUrl}
+          allow="autoplay; encrypted-media; fullscreen"
+          allowFullScreen
+          className="h-full w-full border-0"
+        />
+      ) : movie.thumbnailUrl ? (
+        <div className="flex h-full flex-col items-center justify-center gap-4">
+          <img
+            src={movie.thumbnailUrl}
+            alt={movie.title}
+            className="max-h-[60vh] rounded object-contain"
+          />
+          <p className="text-lg text-gray-400">
+            No trailer available for {movie.title}
+          </p>
+        </div>
+      ) : (
+        <div className="flex h-full items-center justify-center">
+          <p className="text-lg text-gray-400">
+            No trailer available for {movie.title}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
