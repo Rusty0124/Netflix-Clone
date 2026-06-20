@@ -1,22 +1,30 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import axios from "axios";
+import type { Movie } from "@/app/generated/prisma/client";
 import { useFetchFeaturedMovies } from "@/hooks/movie/useFetchFeaturedMovies";
-import { useFetchTrendingMovies } from "@/hooks/movie/useFetchTrendingMovies";
-import { useFetchMovies } from "@/hooks/movie/useFetchMovies";
 import { useFetchMyList } from "@/hooks/my-list/useFetchMyList";
 import MoviesRow from "@/components/movie/MoviesRow";
-import { Volume2, VolumeX } from "lucide-react";
+import { Info } from "lucide-react";
+
+const useMoviesByCategory = (category: string) =>
+  useQuery({
+    queryKey: ["movies", category],
+    queryFn: async () =>
+      (await axios.get<Movie[]>(`/api/movies?category=${category}`)).data,
+  });
 
 export default function HomePage() {
   const { data: featuredMovies } = useFetchFeaturedMovies();
-  const { data: trendingMovies } = useFetchTrendingMovies();
-  const { data: allMovies } = useFetchMovies();
+  const { data: newMovies } = useMoviesByCategory("new");
+  const { data: recommended } = useMoviesByCategory("recommended");
+  const { data: classics } = useMoviesByCategory("classics");
   const { data: myListMovies } = useFetchMyList();
 
   const [featuredIndex, setFeaturedIndex] = useState(0);
-  const [isMuted, setIsMuted] = useState(true);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isMuted] = useState(true);
 
   useEffect(() => {
     if (featuredMovies?.length) {
@@ -25,22 +33,22 @@ export default function HomePage() {
   }, [featuredMovies]);
 
   const featured = featuredMovies?.[featuredIndex];
-  const hasVideo = !!featured?.trailerUrl;
-  const hasBg = hasVideo || !!featured?.thumbnailUrl;
+  const hasTrailer = !!featured?.trailerUrl;
+
+  const trailerSrc = hasTrailer
+    ? featured.trailerUrl + (isMuted ? "" : "").replace("mute=1", isMuted ? "mute=1" : "mute=0")
+    : null;
 
   return (
     <main className="min-h-screen bg-brand-background">
       {featured && (
         <section className="relative flex h-[85vh] items-end px-8 pb-20">
-          {hasVideo ? (
-            <video
-              ref={videoRef}
-              src={featured.trailerUrl!}
-              autoPlay
-              loop
-              muted={isMuted}
-              playsInline
-              className="absolute inset-0 h-full w-full object-cover"
+          {hasTrailer ? (
+            <iframe
+              src={trailerSrc!}
+              allow="autoplay; encrypted-media"
+              allowFullScreen
+              className="pointer-events-none absolute inset-0 h-full w-full scale-125 border-0 object-cover"
             />
           ) : featured.thumbnailUrl ? (
             <img
@@ -50,12 +58,10 @@ export default function HomePage() {
             />
           ) : null}
 
-          {/* Top gradient for nav readability */}
           <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/80 to-transparent" />
-          {/* Bottom gradient to blend into content */}
           <div className="absolute inset-x-0 bottom-0 h-[50%] bg-gradient-to-t from-brand-background via-brand-background/60 to-transparent" />
 
-          {!hasBg && (
+          {!hasTrailer && !featured.thumbnailUrl && (
             <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-brand-background" />
           )}
 
@@ -73,19 +79,14 @@ export default function HomePage() {
               >
                 &#9654; Play
               </a>
+              <button className="flex items-center gap-2 rounded bg-zinc-600/80 px-6 py-2 font-semibold text-white transition hover:bg-zinc-600">
+                <Info size={18} /> More Info
+              </button>
             </div>
           </div>
 
-          {hasVideo && (
-            <button
-              onClick={() => setIsMuted(!isMuted)}
-              className="absolute bottom-20 right-8 z-10 rounded-full border border-white/40 p-2 text-white transition hover:bg-white/10"
-            >
-              {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-            </button>
-          )}
           {featured.maturityRating && featured.maturityRating !== "NR" && (
-            <span className="absolute bottom-20 right-20 z-10 rounded border border-white/40 bg-black/40 px-2 py-0.5 text-sm text-white">
+            <span className="absolute bottom-20 right-8 z-10 rounded border border-white/40 bg-black/40 px-2 py-0.5 text-sm text-white">
               {featured.maturityRating}
             </span>
           )}
@@ -95,11 +96,14 @@ export default function HomePage() {
       {!featured && <div className="h-20" />}
 
       <div className="relative z-10 space-y-10 px-2 pb-16">
-        {trendingMovies && trendingMovies.length > 0 && (
-          <MoviesRow title="Trending Now" movies={trendingMovies} />
+        {newMovies && newMovies.length > 0 && (
+          <MoviesRow title="New to Netflix" movies={newMovies} />
         )}
-        {allMovies && allMovies.length > 0 && (
-          <MoviesRow title="New on Netflix" movies={allMovies} />
+        {recommended && recommended.length > 0 && (
+          <MoviesRow title="Recommended" movies={recommended} />
+        )}
+        {classics && classics.length > 0 && (
+          <MoviesRow title="Classics" movies={classics} />
         )}
         {myListMovies && myListMovies.length > 0 && (
           <MoviesRow title="My List" movies={myListMovies} />

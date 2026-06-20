@@ -15,12 +15,24 @@ export async function GET(req: NextRequest) {
 
   const featured = req.nextUrl.searchParams.get("featured");
   const trending = req.nextUrl.searchParams.get("trending");
+  const category = req.nextUrl.searchParams.get("category");
 
-  const where: Record<string, boolean> = {};
+  const where: Record<string, unknown> = {};
   if (featured === "true") where.isFeatured = true;
   if (trending === "true") where.isTrending = true;
 
-  const movies = await prisma.movie.findMany({ where });
+  if (category === "new") {
+    where.releaseYear = { gte: 2010 };
+  } else if (category === "classics") {
+    where.releaseYear = { lt: 2000 };
+  } else if (category === "recommended") {
+    where.isTrending = true;
+  }
+
+  const movies = await prisma.movie.findMany({
+    where,
+    orderBy: { releaseYear: "desc" },
+  });
 
   return NextResponse.json(movies);
 }
